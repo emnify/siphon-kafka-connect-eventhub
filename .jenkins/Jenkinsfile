@@ -7,7 +7,20 @@ pipeline {
       yaml '''
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    jenkins/build: emb-m2
 spec:
+  podAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: jenkins/build
+          operator: In
+          values:
+          - emb-m2
+      topologyKey: "kubernetes.io/hostname"
+      weight: 100
   volumes:
   - name: m2-repo
     persistentVolumeClaim:
