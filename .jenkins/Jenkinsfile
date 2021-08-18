@@ -8,6 +8,10 @@ pipeline {
 apiVersion: v1
 kind: Pod
 spec:
+  volumes:
+  - name: m2-repo
+    persistentVolumeClaim:
+      claimName: emb-m2-repo
   serviceAccountName: jenkins-codeartifact
   containers:
   - name: maven
@@ -15,6 +19,9 @@ spec:
     command:
     - cat
     tty: true
+    volumeMounts:
+      - mountPath: "/home/jenkins/.m2"
+        name: m2-repo
   - name: aws
     image: amazon/aws-cli:2.2.18
     command:
