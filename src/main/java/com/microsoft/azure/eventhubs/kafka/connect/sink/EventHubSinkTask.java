@@ -1,5 +1,6 @@
 package com.microsoft.azure.eventhubs.kafka.connect.sink;
 
+import com.microsoft.azure.eventhubs.impl.RetryExponential;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigException;
@@ -11,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import org.apache.kafka.connect.errors.ConnectException;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -21,6 +23,7 @@ public class EventHubSinkTask extends SinkTask {
     private BlockingQueue<EventHubClient> ehClients;
     private EventDataExtractor extractor = new EventDataExtractor();
     private EventHubClientProvider provider;
+
     private static final Logger log = LoggerFactory.getLogger(EventHubSinkTask.class);
 
     public String version() {
@@ -43,7 +46,14 @@ public class EventHubSinkTask extends SinkTask {
         log.info("clients per task = {}", clientsPerTask);
         String authType = eventHubSinkConfig.getString(EventHubSinkConfig.AUTHENTICATION_PROVIDER);
         log.info("client auth provider = {}", authType);
-        initializeEventHubClients(authType, connectionString, clientsPerTask);
+
+        initializeEventHubClients(authType,
+                connectionString,
+                clientsPerTask,
+                eventHubSinkConfig.getInt(EventHubSinkConfig.CLIENT_RETRY_COUNT),
+                Duration.ofSeconds(eventHubSinkConfig.getLong(EventHubSinkConfig.CLIENT_RETRY_MIN_BACKOFF)),
+                Duration.ofSeconds(eventHubSinkConfig.getLong(EventHubSinkConfig.CLIENT_RETRY_MAX_BACKOFF))
+        );
         extractor.configureJson(props);
     }
 
@@ -104,13 +114,23 @@ public class EventHubSinkTask extends SinkTask {
         }
     }
 
-    private void initializeEventHubClients(String authType, String connectionString, short clientsPerTask) {
+    private void initializeEventHubClients(String authType,
+                                           String connectionString,
+                                           short clientsPerTask,
+                                           int retryCount,
+                                           Duration minBackoff,
+                                           Duration maxBackoff) {
         ehClients = new LinkedBlockingQueue<EventHubClient>(clientsPerTask);
         provider = getClientProvider(authType, connectionString);
         try {
             for (short i = 0; i < clientsPerTask; i++) {
                 log.info("Creating event hub client authType=%s, connectionString=%s", authType, connectionString);
-                ehClients.offer(provider.newInstance());
+                ehClients.offer(provider.withRetryPolicy(new RetryExponential(
+                        minBackoff,
+                        maxBackoff,
+                        retryCount,
+                        "Retry policy for EventHub client"
+                )));
                 log.info("Created an Event Hub Client");
             }
         } catch (AuthorizationFailedException ex) {

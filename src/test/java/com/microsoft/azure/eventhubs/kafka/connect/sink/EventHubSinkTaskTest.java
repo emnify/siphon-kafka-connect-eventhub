@@ -2,6 +2,7 @@ package com.microsoft.azure.eventhubs.kafka.connect.sink;
 
 import com.microsoft.azure.eventhubs.EventData;
 import com.microsoft.azure.eventhubs.EventHubClient;
+import com.microsoft.azure.eventhubs.RetryPolicy;
 import com.microsoft.azure.eventhubs.impl.EventDataImpl;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -35,7 +36,7 @@ public class EventHubSinkTaskTest {
         CompletableFuture<Void> cf = new CompletableFuture<Void>();
         cf.complete(null);
         doReturn(cf).when(spyEventHubSinkTask).sendAsync(any(EventHubClient.class), any(EventData.class));
-        doReturn(mock(EventHubClient.class)).when(spyClientProvider).newInstance();
+        doReturn(mock(EventHubClient.class)).when(spyClientProvider).withRetryPolicy(any(RetryPolicy.class));
         doReturn(spyClientProvider).when(spyEventHubSinkTask).getClientProvider(anyString(), anyString());
     }
 

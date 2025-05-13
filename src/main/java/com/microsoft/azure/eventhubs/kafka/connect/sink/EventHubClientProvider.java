@@ -1,9 +1,6 @@
 package com.microsoft.azure.eventhubs.kafka.connect.sink;
 
-import com.microsoft.azure.eventhubs.ConnectionStringBuilder;
-import com.microsoft.azure.eventhubs.EventHubClient;
-import com.microsoft.azure.eventhubs.EventHubClientOptions;
-import com.microsoft.azure.eventhubs.EventHubException;
+import com.microsoft.azure.eventhubs.*;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
@@ -29,6 +26,14 @@ public class EventHubClientProvider {
             return getEventHubClientFromRefreshToken();
         } else {
             return getEventHubClientFromConnectionString();
+        }
+    }
+
+    public EventHubClient withRetryPolicy(RetryPolicy policy) throws EventHubException, IOException {
+        if (authenticationProvider == EventHubSinkConfig.JWT_AUTHENTICATION_PROVIDER) {
+            return getEventHubClientFromRefreshToken();
+        } else {
+            return EventHubClient.createFromConnectionStringSync(this.connectionStringBuilder.toString(), policy, executorService);
         }
     }
 
