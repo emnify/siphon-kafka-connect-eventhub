@@ -4,15 +4,41 @@
 
     <groupId>org.github.xjrk58</groupId>
     <artifactId>azure-eventhub-connector</artifactId>
-    <version>2.7.0-3.5.0</version>
+    <version>3.7.2-5.21.6</version>
     <packaging>jar</packaging>
 
     <name>azure-eventhub-connector</name>
-    <url>http://maven.apache.org</url>
+    <description>Kafka Connect sink connector for Azure Event Hubs</description>
+    <url>https://github.com/emnify/siphon-kafka-connect-eventhub</url>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <kafka.version>2.7.0</kafka.version>
+        <maven.compiler.release>11</maven.compiler.release>
+
+        <!--
+          Kafka Connect API. `provided` - supplied by the Connect runtime at execution time, so this must be the
+          LOWEST runtime the plugin has to run on, not the newest available. EMB runs
+          confluentinc/cp-kafka-connect:7.7.7, and Confluent Platform 7.7.x ships Apache Kafka 3.7.x. A plugin
+          compiled against a newer Connect API than the runtime provides fails with NoSuchMethodError at the first
+          call to anything added in between. Compiling against 3.7 still runs on 3.9 and 4.x.
+        -->
+        <kafka.version>3.7.2</kafka.version>
+        <!-- Azure Event Hubs SDK (com.azure track). Supersedes the retired com.microsoft.azure:azure-eventhubs. -->
+        <azure.eventhubs.version>5.21.6</azure.eventhubs.version>
+
+        <slf4j.version>2.0.17</slf4j.version>
+        <junit.version>4.13.2</junit.version>
+        <mockito.version>5.23.0</mockito.version>
+
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
+        <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+        <maven-assembly-plugin.version>3.7.1</maven-assembly-plugin.version>
+        <maven-dependency-plugin.version>3.8.1</maven-dependency-plugin.version>
+        <versions-maven-plugin.version>2.18.0</versions-maven-plugin.version>
+
+        <!-- Override at deploy time: -Dcodeartifact.url=https://<domain>-<owner>.d.codeartifact.<region>.amazonaws.com/maven/<repo>/ -->
+        <codeartifact.url>https://example.invalid/override-codeartifact-url</codeartifact.url>
     </properties>
 
     <dependencies>
@@ -29,63 +55,87 @@
             <version>${kafka.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- https://mvnrepository.com/artifact/com.microsoft.azure/azure-eventhubs -->
+
+        <!-- https://mvnrepository.com/artifact/com.azure/azure-messaging-eventhubs -->
         <dependency>
-            <groupId>com.microsoft.azure</groupId>
-            <artifactId>azure-eventhubs</artifactId>
-            <version>3.3.0</version>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-messaging-eventhubs</artifactId>
+            <version>${azure.eventhubs.version}</version>
+            <exclusions>
+                <!--
+                  slf4j-api is supplied by the Connect worker. Without this exclusion the assembly bundles the
+                  transitive 1.7.x copy into the shaded jar, which shadows the worker's own logging setup.
+                -->
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.13.2</version>
+            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.mockito/mockito-core -->
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>5.17.0</version>
+            <version>${mockito.version}</version>
             <scope>test</scope>
-        </dependency>
-        <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>2.0.17</version>
-        </dependency>
-        <!-- https://mvnrepository.com/artifact/log4j/apache-log4j-extras -->
-        <dependency>
-            <groupId>log4j</groupId>
-            <artifactId>apache-log4j-extras</artifactId>
-            <version>1.2.17</version>
         </dependency>
     </dependencies>
 
     <build>
         <sourceDirectory>src/main/java</sourceDirectory>
-        <resources>
-            <resource>
-                <directory>src/main/resources</directory>
-                <filtering>true</filtering>
-            </resource>
-        </resources>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.3</version>
+                <version>${maven-compiler-plugin.version}</version>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+            </plugin>
+
+            <!-- Stamp the version into the manifest so SinkConnector.version() does not report null. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>${maven-jar-plugin.version}</version>
                 <configuration>
-                    <source>11</source>
-                    <target>11</target>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                        </manifest>
+                    </archive>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>versions-maven-plugin</artifactId>
-                <version>2.7</version>
+                <version>${versions-maven-plugin.version}</version>
             </plugin>
+
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
+                <version>${maven-dependency-plugin.version}</version>
                 <executions>
                     <execution>
                         <id>copy-dependencies</id>
@@ -95,6 +145,7 @@
                         </goals>
                         <configuration>
                             <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
                             <overWriteReleases>false</overWriteReleases>
                             <overWriteSnapshots>false</overWriteSnapshots>
                             <overWriteIfNewer>true</overWriteIfNewer>
@@ -102,44 +153,46 @@
                     </execution>
                 </executions>
             </plugin>
+
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
+                <version>${maven-assembly-plugin.version}</version>
                 <executions>
                     <execution>
+                        <id>make-plugin-bundle</id>
                         <phase>package</phase>
                         <goals>
                             <goal>single</goal>
                         </goals>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <addClasspath>true</addClasspath>
-                            <classpathPrefix>lib/</classpathPrefix>
-                        </manifest>
-                    </archive>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs>
-                </configuration>
+                        <configuration>
+                            <archive>
+                                <manifest>
+                                    <addClasspath>true</addClasspath>
+                                    <classpathPrefix>lib/</classpathPrefix>
+                                    <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                                </manifest>
+                            </archive>
+                            <descriptorRefs>
+                                <descriptorRef>jar-with-dependencies</descriptorRef>
+                            </descriptorRefs>
+                        </configuration>
                     </execution>
                 </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>11</source>
-                    <target>11</target>
-                </configuration>
             </plugin>
         </plugins>
     </build>
 
     <distributionManagement>
+        <!--
+          Bintray was shut down in May 2021. The Jenkins pipeline (.jenkins/Jenkinsfile) deploys to AWS
+          CodeArtifact using the settings.xml injected from the `MAVEN_SETTINGS` folder property, which is
+          expected to supply a mirror for this repository id.
+        -->
         <repository>
-            <id>bintray-xjrk58-org.github.xjrk58</id>
-            <name>xjrk58-org.github.xjrk58</name>
-            <url>https://api.bintray.com/maven/xjrk58/org.github.xjrk58/azure-eventhub-connector/;publish=1</url>
+            <id>emnify-codeartifact</id>
+            <name>emnify CodeArtifact</name>
+            <url>${codeartifact.url}</url>
         </repository>
     </distributionManagement>
 
