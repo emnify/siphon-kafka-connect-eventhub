@@ -1,11 +1,20 @@
 <?xml version='1.0' encoding='UTF-8'?>
+<!--
+  Credentials for the repository declared in the pom's distributionManagement.
+
+  The Jenkins pipeline does NOT use this file: .jenkins/Jenkinsfile overwrites it with the MAVEN_SETTINGS folder
+  property, which carries the AWS CodeArtifact authorization token. This copy exists only for the GitHub Actions
+  publish workflow.
+
+  The server id must match <distributionManagement><repository><id> in pom.xml.
+-->
 <settings xsi:schemaLocation='http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd'
           xmlns='http://maven.apache.org/SETTINGS/1.0.0' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>
     <servers>
         <server>
-    	    <id>bintray-xjrk58-org.github.xjrk58</id>
-            <username>xjrk58</username>
-	        <password>${env.bintray}</password>
+            <id>emnify-codeartifact</id>
+            <username>aws</username>
+            <password>${env.CODEARTIFACT_AUTH_TOKEN}</password>
         </server>
     </servers>
 </settings>
