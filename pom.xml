@@ -26,6 +26,13 @@
         <!-- Azure Event Hubs SDK (com.azure track). Supersedes the retired com.microsoft.azure:azure-eventhubs. -->
         <azure.eventhubs.version>5.21.6</azure.eventhubs.version>
 
+        <!--
+          Pinned transitives of the Azure SDK, both to close known CVEs and to keep the Jackson modules on one
+          version. See <dependencyManagement> for why each is here.
+        -->
+        <jackson.version>2.18.10</jackson.version>
+        <proton-j.version>0.35.0</proton-j.version>
+
         <slf4j.version>2.0.17</slf4j.version>
         <junit.version>4.13.2</junit.version>
         <mockito.version>5.23.0</mockito.version>
@@ -47,6 +54,40 @@
         <!-- Override at deploy time: -Dcodeartifact.url=https://<domain>-<owner>.d.codeartifact.<region>.amazonaws.com/maven/<repo>/ -->
         <codeartifact.url>https://example.invalid/override-codeartifact-url</codeartifact.url>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!--
+              Jackson. connect-json (provided) sits nearer the root than azure-core does, so nearest-wins pulled
+              jackson-databind down to 2.16.2 while azure-core's jackson-datatype-jsr310 stayed at 2.18.9 - and
+              both shipped in the shaded jar. Jackson does not support mixing module versions, so that pairing was
+              unsupported regardless of any CVE. The bom puts every Jackson artifact on one version, which also
+              closes CVE-2026-54512/54513 (PolymorphicTypeValidator bypass via generic type ids, fixed in 2.18.8).
+
+              This connector never enables polymorphic typing, so those CVEs were not exploitable here; the skew
+              was the real defect. Staying on the 2.18 line keeps us on what azure-core 1.59.0 was built against.
+            -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!--
+              proton-j. azure-core-amqp 2.12.1 - the newest release - still depends on 0.34.1, which Apache flagged
+              for a pre-authentication unbounded symbol cache that a peer can drive into resource exhaustion
+              (CVE-2026-66257 and five siblings). 0.35.0 is the upstream fix. This is a deliberate override of an
+              SDK transitive: drop it once azure-core-amqp ships 0.35.0 itself.
+            -->
+            <dependency>
+                <groupId>org.apache.qpid</groupId>
+                <artifactId>proton-j</artifactId>
+                <version>${proton-j.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- https://mvnrepository.com/artifact/org.apache.kafka/connect-api -->
@@ -222,12 +263,27 @@
                                 <format>SARIF</format>
                             </formats>
                             <!--
-                              connect-api and connect-json are `provided` - the Connect runtime supplies them, so
-                              a CVE there is the runtime image's to fix, not this plugin's. They stay in the scan
-                              because knowing about it still matters; skipTestScope drops JUnit and Mockito,
-                              which never ship.
+                              Gate on what actually ships in the shaded jar. skipTestScope drops JUnit and
+                              Mockito; skipProvidedScope drops connect-api, connect-json and kafka-clients, which
+                              the Connect runtime supplies and which are pinned to the LOWEST supported runtime on
+                              purpose (see kafka.version). A CVE there is the cp-kafka-connect image's to fix, and
+                              gating this build on it would mean a permanently red build we are not allowed to
+                              turn green.
+
+                              To see them anyway - worth doing when choosing a runtime image:
+                                  mvn -B verify -Psecurity-scan -Ddependency-check.skipProvidedScope=false
                             -->
                             <skipTestScope>true</skipTestScope>
+                            <skipProvidedScope>true</skipProvidedScope>
+
+                            <!--
+                              Sonatype OSS Index now answers anonymous callers with 401, and analyzer failures are
+                              fatal by design (failOnError defaults to true, which is right - a scan that silently
+                              skipped half its analyzers is worse than a red build). Using it properly needs a
+                              Sonatype account and credentials in settings.xml; NVD alone is the source until
+                              someone decides that is worth doing.
+                            -->
+                            <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
                         </configuration>
                         <executions>
                             <execution>

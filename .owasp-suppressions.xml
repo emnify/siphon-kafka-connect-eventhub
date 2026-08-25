@@ -15,4 +15,22 @@
     </suppress>
 -->
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+  <!--
+    CVE-2026-33117 is an incorrect authentication-tag comparison in the Azure SDK's *Key Vault Keys* library
+    (com.azure:azure-security-keyvault-keys, fixed in 4.10.6) on its local cryptography path. This connector does
+    not depend on Key Vault at all - it uses a SAS connection string or a filesystem JWT.
+
+    dependency-check attributes it to azure-core, azure-core-amqp and azure-json because NVD files the advisory
+    under the single blanket CPE cpe:2.3:a:microsoft:azure_sdk_for_java, which matches every com.azure artifact
+    regardless of which library the flaw is actually in.
+
+    Scoped to this one CVE on purpose: a future com.azure advisory still fails the build.
+  -->
+  <suppress until="2027-02-28Z">
+    <notes>Key Vault Keys flaw; this connector has no Key Vault dependency. Blanket azure_sdk_for_java CPE.</notes>
+    <packageUrl regex="true">^pkg:maven/com\.azure/azure\-(core|core\-amqp|json)@.*$</packageUrl>
+    <cve>CVE-2026-33117</cve>
+  </suppress>
+
 </suppressions>

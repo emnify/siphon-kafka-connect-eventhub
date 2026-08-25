@@ -288,6 +288,34 @@ would pay the NVD feed download. A scheduled scan reports the same thing without
 *Documented:* [Scan dependencies for known CVEs](docs/how-to/scan-dependencies-for-cves.md). There is no
 regression test — the finding set changes as CVEs are published, so a pinned assertion would be false precision.
 
+### S2 — the shaded jar shipped mismatched Jackson modules, and a vulnerable proton-j
+
+Found by the first run of the scan above, which is the point of having it.
+
+`connect-json` is `provided`, but it sits nearer the root than `azure-core` does, so Maven's nearest-wins pulled
+`jackson-databind` down to **2.16.2** at `compile` scope while `azure-core`'s `jackson-datatype-jsr310` stayed at
+**2.18.9** — and both shipped in the shaded jar. Jackson does not support mixing module versions across a
+release line; that pairing was unsupported regardless of any advisory, and nothing surfaced it because nothing
+was looking.
+
+It also carried CVE-2026-54512/54513 (8.1) — a `PolymorphicTypeValidator` bypass where a type id containing
+generic parameters has only its raw container class validated, leaving the nested type arguments to be
+instantiated unchecked. Not exploitable here, since this connector never enables polymorphic typing, but the
+skew was a real defect in its own right.
+
+Separately, `azure-core-amqp` 2.12.1 — the newest release — still depends on `proton-j` **0.34.1**, which Apache
+flagged for a pre-authentication unbounded symbol cache a peer can drive into resource exhaustion
+(CVE-2026-66257 and five siblings, 7.5 and below). That one *is* on the connector's own AMQP path.
+
+*Fixed:* `jackson-bom` 2.18.10 imported into `dependencyManagement`, putting every Jackson artifact on one
+version; `proton-j` pinned to 0.35.0, the upstream fix. The proton-j pin is a deliberate override of an SDK
+transitive and should be dropped once `azure-core-amqp` ships 0.35.0 itself.
+
+Neither touches `kafka.version` or `azure.eventhubs.version`, so the artifact version — `3.7.2-5.21.6`, derived
+from those two — is unchanged and downstream pins still resolve.
+
+The scan now reports **zero** findings against what ships.
+
 ### S2 — customer-facing errors were dropped by ecds-api's extraction *(fixed in ecds-api)*
 
 `_parseException` in `ecds-api/src/client/connect.ts` only recognised
