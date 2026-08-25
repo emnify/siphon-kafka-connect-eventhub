@@ -1,0 +1,41 @@
+# Dependency updates. The decade-old Guava and OkHttp that rode in on the retired
+# com.microsoft.azure:azure-eventhubs survived for years because nothing was watching; this is the watch.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      # One PR for the Azure SDK, one for the test tooling. Bumping azure-messaging-eventhubs alone while its
+      # azure-core transitives lag is how version skew inside the SDK starts.
+      azure:
+        patterns:
+          - "com.azure:*"
+      test-tooling:
+        patterns:
+          - "junit:*"
+          - "org.mockito:*"
+      maven-plugins:
+        patterns:
+          - "org.apache.maven.plugins:*"
+          - "org.codehaus.mojo:*"
+    ignore:
+      # connect-api and connect-json are `provided` and MUST track the lowest Connect runtime the plugin runs
+      # on - currently Apache Kafka 3.7.x, from confluentinc/cp-kafka-connect:7.7.7. See the comment on
+      # kafka.version in pom.xml. Raising these is a deliberate decision tied to the runtime, not a dependency
+      # bump, so Dependabot must not propose it.
+      - dependency-name: org.apache.kafka:connect-api
+      - dependency-name: org.apache.kafka:connect-json
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies

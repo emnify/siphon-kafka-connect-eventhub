@@ -7,6 +7,8 @@ import org.apache.kafka.connect.storage.ConverterConfig;
 
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -41,6 +43,13 @@ public class OutputJsonFormatterConfig extends AbstractConfig {
             "Zone used to render Timestamp logical types. Changing this changes the emitted values";
     private static final String TIME_ZONE_DISPLAY = "Timestamp zone";
 
+    public static final String DECIMAL_FORMAT_CONFIG = "json.decimal.format";
+    public static final String DECIMAL_FORMAT_DEFAULT = "BASE64";
+    private static final String DECIMAL_FORMAT_DOC =
+            "How Decimal logical types are rendered. BASE64 emits the two's-complement unscaled bytes as a "
+                    + "base64 string, matching Connect's own JsonConverter. NUMERIC emits a JSON number";
+    private static final String DECIMAL_FORMAT_DISPLAY = "Decimal format";
+
     public static final String NULL_CONFIG = "json.skip.null";
     public static final boolean NULL_DEFAULT = true;
     private static final String NULL_DOC = "Skip null fields while converting to JSON";
@@ -64,6 +73,10 @@ public class OutputJsonFormatterConfig extends AbstractConfig {
         CONFIG.define(TIME_ZONE_CONFIG, ConfigDef.Type.STRING, TIME_ZONE_DEFAULT,
                 ConfigDef.Importance.LOW, TIME_ZONE_DOC, group, orderInGroup++, ConfigDef.Width.MEDIUM,
                 TIME_ZONE_DISPLAY);
+        CONFIG.define(DECIMAL_FORMAT_CONFIG, ConfigDef.Type.STRING, DECIMAL_FORMAT_DEFAULT,
+                ConfigDef.CaseInsensitiveValidString.in(DecimalFormat.names()),
+                ConfigDef.Importance.LOW, DECIMAL_FORMAT_DOC, group, orderInGroup++, ConfigDef.Width.MEDIUM,
+                DECIMAL_FORMAT_DISPLAY);
         CONFIG.define(NULL_CONFIG, ConfigDef.Type.BOOLEAN, NULL_DEFAULT,
                 ConfigDef.Importance.LOW, NULL_DOC, group, orderInGroup++, ConfigDef.Width.MEDIUM,
                 NULL_DISPLAY);
@@ -102,6 +115,11 @@ public class OutputJsonFormatterConfig extends AbstractConfig {
         }
     }
 
+    /** How Decimal logical types are rendered. */
+    public DecimalFormat decimalFormat() {
+        return DecimalFormat.valueOf(getString(DECIMAL_FORMAT_CONFIG).toUpperCase(Locale.ROOT));
+    }
+
     /** When enabled, null values are omitted from the serializer output rather than emitted as JSON null. */
     public boolean enableSkipNulls() {
         return getBoolean(NULL_CONFIG);
@@ -117,6 +135,18 @@ public class OutputJsonFormatterConfig extends AbstractConfig {
         } catch (IllegalArgumentException ex) {
             // Fail at startup with the offending key rather than on the first record that uses it.
             throw new ConfigException(key, pattern, "is not a valid DateTimeFormatter pattern: " + ex.getMessage());
+        }
+    }
+
+    /** Rendering of {@link org.apache.kafka.connect.data.Decimal} values. */
+    public enum DecimalFormat {
+        /** The unscaled value as base64-encoded two's-complement bytes: {@code "BNI="}. */
+        BASE64,
+        /** A JSON number, written in plain notation: {@code 12.34}. */
+        NUMERIC;
+
+        static String[] names() {
+            return Arrays.stream(values()).map(Enum::name).toArray(String[]::new);
         }
     }
 }

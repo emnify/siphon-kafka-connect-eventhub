@@ -61,6 +61,7 @@ are passed through untouched.
 | `json.datetime.pattern` | string | `""` | low | `DateTimeFormatter` pattern for `Timestamp` logical types. Empty means `ISO_LOCAL_DATE_TIME`. |
 | `json.time.pattern` | string | `""` | low | `DateTimeFormatter` pattern for `Time` logical types. Empty means `ISO_LOCAL_TIME`. |
 | `json.timestamp.zone` | string | `UTC` | low | Zone used to render `Timestamp` logical types. Changing it changes the emitted values. |
+| `json.decimal.format` | string | `BASE64` | low | How `Decimal` logical types are rendered: `BASE64` (the unscaled two's-complement bytes as a base64 string, matching Connect's own `JsonConverter`) or `NUMERIC` (a JSON number). Case-insensitive; any other value is rejected at startup. |
 
 An invalid pattern or zone fails the connector at startup, naming the offending property, rather than on the first
 record that happens to use it.

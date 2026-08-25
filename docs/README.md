@@ -26,6 +26,7 @@ Recipes for a specific goal, assuming you already know the basics.
 - [Preserve per-key ordering](how-to/preserve-record-ordering.md)
 - [Tune throughput](how-to/tune-throughput.md)
 - [Connect through a firewall or proxy](how-to/connect-through-a-firewall.md)
+- [Scan dependencies for known CVEs](how-to/scan-dependencies-for-cves.md)
 - [Upgrade from the v3 SDK build](how-to/upgrade-from-v3.md)
 
 ## Reference

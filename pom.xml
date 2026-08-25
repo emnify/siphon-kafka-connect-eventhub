@@ -36,6 +36,13 @@
         <maven-assembly-plugin.version>3.7.1</maven-assembly-plugin.version>
         <maven-dependency-plugin.version>3.8.1</maven-dependency-plugin.version>
         <versions-maven-plugin.version>2.18.0</versions-maven-plugin.version>
+        <dependency-check-maven.version>12.1.3</dependency-check-maven.version>
+
+        <!--
+          CVSS score at which the `security-scan` profile fails the build. 7.0 is the floor of "High"; anything
+          below is reported but does not block. Raise it only with a suppression entry explaining why.
+        -->
+        <dependency-check.failBuildOnCVSS>7.0</dependency-check.failBuildOnCVSS>
 
         <!-- Override at deploy time: -Dcodeartifact.url=https://<domain>-<owner>.d.codeartifact.<region>.amazonaws.com/maven/<repo>/ -->
         <codeartifact.url>https://example.invalid/override-codeartifact-url</codeartifact.url>
@@ -182,6 +189,58 @@
             </plugin>
         </plugins>
     </build>
+
+
+    <profiles>
+        <!--
+          Known-CVE scan of the full transitive tree. Not bound to the default build: dependency-check downloads
+          and caches the NVD feed, which needs network access and several minutes on a cold cache, and a build
+          that fails because a CVE was published overnight is a build that fails for reasons unrelated to the
+          commit. `.github/workflows/security.yml` runs it on a schedule and on demand instead.
+
+              mvn -B verify -Psecurity-scan
+
+          Set NVD_API_KEY to a key from https://nvd.nist.gov/developers/request-an-api-key. Without one the NIST
+          API throttles hard and a cold run takes upwards of half an hour.
+        -->
+        <profile>
+            <id>security-scan</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.owasp</groupId>
+                        <artifactId>dependency-check-maven</artifactId>
+                        <version>${dependency-check-maven.version}</version>
+                        <configuration>
+                            <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                            <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
+                            <suppressionFiles>
+                                <suppressionFile>.owasp-suppressions.xml</suppressionFile>
+                            </suppressionFiles>
+                            <formats>
+                                <format>HTML</format>
+                                <format>SARIF</format>
+                            </formats>
+                            <!--
+                              connect-api and connect-json are `provided` - the Connect runtime supplies them, so
+                              a CVE there is the runtime image's to fix, not this plugin's. They stay in the scan
+                              because knowing about it still matters; skipTestScope drops JUnit and Mockito,
+                              which never ship.
+                            -->
+                            <skipTestScope>true</skipTestScope>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
     <distributionManagement>
         <!--

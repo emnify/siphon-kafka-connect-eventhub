@@ -62,9 +62,17 @@ deploy time and not on the first record. See [fail fast or retry](docs/explanati
 ## Building and testing
 
 ```bash
-mvn test      # 111 unit tests, no network access required
+mvn test      # 117 unit tests, no network access required
 mvn package   # connector jar + lib/, and a shaded jar
 ```
+
+Dependency CVEs are scanned separately, not on every build:
+
+```bash
+mvn -B verify -Psecurity-scan   # OWASP dependency-check, fails at CVSS >= 7.0
+```
+
+It also runs weekly in CI. See [scan dependencies for known CVEs](docs/how-to/scan-dependencies-for-cves.md).
 
 ## Licence
 

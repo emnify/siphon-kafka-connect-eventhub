@@ -55,7 +55,7 @@ The payload only — never Connect's `{"schema": .., "payload": ..}` envelope.
 
 | Logical type | JSON | Controlled by |
 |---|---|---|
-| `org.apache.kafka.connect.data.Decimal` | base64 of the unscaled big-endian bytes | — |
+| `org.apache.kafka.connect.data.Decimal` | base64 of the unscaled big-endian bytes, or a number | `json.decimal.format` |
 | `org.apache.kafka.connect.data.Date` | `"2020-06-04"` | `json.date.pattern` |
 | `org.apache.kafka.connect.data.Time` | `"01:02:03.5"` | `json.time.pattern` |
 | `org.apache.kafka.connect.data.Timestamp` | `"2020-06-04T13:36:17.159"` | `json.datetime.pattern`, `json.timestamp.zone` |
@@ -67,8 +67,15 @@ Three notes an integrator needs:
   `json.datetime.pattern` to `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'` if you need it to be explicit.
 - **Fractional seconds have variable width.** The ISO formats emit the minimum number of digits, so 500ms renders
   as `.5` and 159ms as `.159`. Configure an explicit pattern if a downstream parser needs fixed precision.
-- **`Decimal` is base64, not a number.** This matches Connect's own `JsonConverter` default, but it surprises
-  most consumers.
+- **`Decimal` is base64 by default, not a number.** `{"amount":"BNI="}` rather than `{"amount":12.34}`. This
+  matches Connect's own `JsonConverter` default, but it surprises most consumers. Set
+  `json.decimal.format=NUMERIC` to emit a JSON number instead. The default is unchanged because switching it
+  would rewrite the payload shape under every existing consumer.
+
+  `NUMERIC` preserves the schema's scale, so a `Decimal(4)` holding `12.3400` emits `12.3400` rather than
+  `12.34`, and plain notation is always used — a negative scale emits `100`, never `1E+2`. Note that a JSON
+  number wide enough to exceed a double loses precision in consumers that parse into IEEE 754, which is the
+  reason base64 is the safe default.
 
 ### Nulls
 

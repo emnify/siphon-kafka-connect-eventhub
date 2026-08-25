@@ -175,6 +175,61 @@ public class OutputJsonFormatterTest {
     }
 
     @Test
+    public void decimalIsSerializedAsANumberWhenNumericFormatIsSelected() {
+        Schema schema = SchemaBuilder.struct().field("amount", Decimal.schema(2)).build();
+        Struct value = new Struct(schema).put("amount", new BigDecimal("12.34"));
+
+        assertEquals("{\"amount\":12.34}", json(decimalFormatter("NUMERIC"), schema, value));
+    }
+
+    @Test
+    public void decimalFormatIsCaseInsensitive() {
+        Schema schema = SchemaBuilder.struct().field("amount", Decimal.schema(2)).build();
+        Struct value = new Struct(schema).put("amount", new BigDecimal("12.34"));
+
+        assertEquals("{\"amount\":12.34}", json(decimalFormatter("numeric"), schema, value));
+    }
+
+    @Test
+    public void numericDecimalKeepsPlainNotationForANegativeScale() {
+        // BigDecimal.toString would render this as 1E+2, which is valid JSON but not what a consumer expects.
+        Schema schema = SchemaBuilder.struct().field("amount", Decimal.schema(-2)).build();
+        Struct value = new Struct(schema).put("amount", new BigDecimal("1E+2"));
+
+        assertEquals("{\"amount\":100}", json(decimalFormatter("NUMERIC"), schema, value));
+    }
+
+    @Test
+    public void numericDecimalPreservesTrailingZeroesFromTheSchemaScale() {
+        Schema schema = SchemaBuilder.struct().field("amount", Decimal.schema(4)).build();
+        Struct value = new Struct(schema).put("amount", new BigDecimal("12.3400"));
+
+        assertEquals("{\"amount\":12.3400}", json(decimalFormatter("NUMERIC"), schema, value));
+    }
+
+    @Test
+    public void base64RemainsTheDefaultDecimalFormat() {
+        Schema schema = SchemaBuilder.struct().field("amount", Decimal.schema(2)).build();
+        Struct value = new Struct(schema).put("amount", new BigDecimal("12.34"));
+
+        assertEquals("{\"amount\":\"BNI=\"}", json(decimalFormatter("BASE64"), schema, value));
+    }
+
+    @Test
+    public void anUnknownDecimalFormatIsRejectedAtConfigurationTime() {
+        ConfigException ex = assertThrows(ConfigException.class, () -> decimalFormatter("plain"));
+        assertEquals(true, ex.getMessage().contains(OutputJsonFormatterConfig.DECIMAL_FORMAT_CONFIG));
+    }
+
+    private static OutputJsonFormatter decimalFormatter(String format) {
+        OutputJsonFormatter formatter = new OutputJsonFormatter();
+        Map<String, Object> config = new HashMap<>();
+        config.put(OutputJsonFormatterConfig.DECIMAL_FORMAT_CONFIG, format);
+        formatter.configure(config);
+        return formatter;
+    }
+
+    @Test
     public void requiredFieldWithNullValueIsRejected() {
         Schema schema = SchemaBuilder.struct().field("required", Schema.STRING_SCHEMA).build();
         // Bypass Struct.validate by disabling null skipping, so the converter itself has to reject the value.

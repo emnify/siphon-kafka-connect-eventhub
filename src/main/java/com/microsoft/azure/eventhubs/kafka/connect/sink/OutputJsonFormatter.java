@@ -47,6 +47,8 @@ public class OutputJsonFormatter {
     private DateTimeFormatter dateFormat = DateTimeFormatter.ISO_LOCAL_DATE;
     private DateTimeFormatter timeFormat = DateTimeFormatter.ISO_LOCAL_TIME;
     private ZoneId timestampZone = ZoneOffset.UTC;
+    private OutputJsonFormatterConfig.DecimalFormat decimalFormat =
+            OutputJsonFormatterConfig.DecimalFormat.valueOf(OutputJsonFormatterConfig.DECIMAL_FORMAT_DEFAULT);
     private boolean skipNulls = OutputJsonFormatterConfig.NULL_DEFAULT;
 
     public OutputJsonFormatter() {
@@ -61,6 +63,7 @@ public class OutputJsonFormatter {
         dateFormat = config.dateFormat();
         timeFormat = config.timeFormat();
         timestampZone = config.timestampZone();
+        decimalFormat = config.decimalFormat();
         serializer.configure(conf, false);
     }
 
@@ -214,7 +217,13 @@ public class OutputJsonFormatter {
             if (!(value instanceof BigDecimal)) {
                 throw new DataException("Invalid type for Decimal, expected BigDecimal but was " + value.getClass());
             }
-            return JsonNodeFactory.instance.binaryNode(Decimal.fromLogical(schema, (BigDecimal) value));
+            BigDecimal decimal = (BigDecimal) value;
+            // BASE64 is the default because it is what Connect's own JsonConverter emits, and changing the shape of
+            // an existing consumer's payload is not a decision this connector should make for them.
+            if (decimalFormat == OutputJsonFormatterConfig.DecimalFormat.NUMERIC) {
+                return JsonNodeFactory.instance.numberNode(decimal);
+            }
+            return JsonNodeFactory.instance.binaryNode(Decimal.fromLogical(schema, decimal));
         }
         if (Date.LOGICAL_NAME.equals(name)) {
             requireDate(name, value);

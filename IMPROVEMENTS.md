@@ -246,6 +246,82 @@ at Bintray, shut down in May 2021.
 *Fixed:* every plugin version pinned as a property, duplicate declaration removed, `maven.compiler.release`
 instead of separate `source`/`target`.
 
+### S3 — `Decimal` serialized as base64 with no way out
+
+`{"amount":"BNI="}` rather than `{"amount":12.34}`. This matches Connect's own `JsonConverter` default, so it was
+never a regression, but it surprises most consumers and there was no way to ask for anything else.
+
+*Fixed:* `json.decimal.format`, accepting `BASE64` (the default, unchanged behaviour) or `NUMERIC`. Case
+insensitive; anything else is rejected at startup rather than on the first record. `NUMERIC` preserves the
+schema's scale — a `Decimal(4)` holding `12.3400` emits `12.3400` — and always uses plain notation, so a negative
+scale emits `100` and never `1E+2`.
+
+The default stays `BASE64` deliberately: changing it would rewrite the payload shape under every existing
+consumer, and a JSON number wide enough to exceed a double loses precision in consumers that parse into
+IEEE 754. Consumers that want a number now opt in.
+
+*Tests:* `OutputJsonFormatterTest.decimalIsSerializedAsANumberWhenNumericFormatIsSelected`,
+`.decimalFormatIsCaseInsensitive`, `.numericDecimalKeepsPlainNotationForANegativeScale`,
+`.numericDecimalPreservesTrailingZeroesFromTheSchemaScale`, `.base64RemainsTheDefaultDecimalFormat`,
+`.anUnknownDecimalFormatIsRejectedAtConfigurationTime`.
+
+### S4 — no dependency vulnerability scanning
+
+Nothing failed the build on a known CVE, which is how a decade-old Guava survived in the tree.
+
+*Fixed:* three pieces.
+
+- `.github/dependabot.yml` opens weekly upgrade PRs, grouped so `com.azure:*` moves together — bumping
+  `azure-messaging-eventhubs` while its `azure-core` transitives lag is how version skew inside the SDK starts.
+  `connect-api` and `connect-json` are ignored on purpose: they are `provided` and must track the *lowest*
+  Connect runtime, not the newest release.
+- A `security-scan` Maven profile runs `dependency-check-maven`, failing at CVSS ≥ 7.0, with
+  `.owasp-suppressions.xml` for findings that are genuinely not exploitable here. Suppressions carry an expiry
+  date, so an inherited one eventually fails the build rather than living forever.
+- `.github/workflows/security.yml` runs it weekly, on demand, and on PRs that touch the dependency tree —
+  uploading SARIF to the Security tab and the HTML report as an artifact.
+
+Deliberately **not** on the default build or the Jenkins pipeline, which is where the original suggestion pointed:
+a CVE published overnight would fail a build for reasons unrelated to the commit under test, and every developer
+would pay the NVD feed download. A scheduled scan reports the same thing without that coupling.
+
+*Documented:* [Scan dependencies for known CVEs](docs/how-to/scan-dependencies-for-cves.md). There is no
+regression test — the finding set changes as CVEs are published, so a pinned assertion would be false precision.
+
+### S2 — customer-facing errors were dropped by ecds-api's extraction *(fixed in ecds-api)*
+
+`_parseException` in `ecds-api/src/client/connect.ts` only recognised
+`Caused by: org.apache.kafka.connect.errors.ConnectException:` and the webhook sink's
+`kafka.connect.http.sink.errors$*`. Everything else — a `ConfigException`, a `RetriableException`, any subclass,
+any framework-level failure — matched nothing, was filtered out, and reached the customer as
+`Error state: Unknown error`.
+
+This connector bends to fit that pattern, and `CustomerFacingErrorContractTest` keeps it fitting. But the regex
+was the wrong place for the contract, and every other connector in the estate shared the trap.
+
+*Fixed in `ecds-api`, branch `CHL-3023-connect-error-extraction`:* extraction is now three passes, most specific
+first, so a trace that already worked keeps producing exactly what it produced before —
+
+1. a `Caused by:` from a connector that follows the message contract (unchanged, greedy `.+` included: for the
+   webhook sink that greed is load-bearing, because it skips the retry-wrapper prose and lands on the underlying
+   HTTP error);
+2. the first `Caused by:` of any type, falling back to the class name when the exception carries no message;
+3. the first non-empty line of the trace, with a leading `com.example.SomethingException: ` stripped so it reads
+   as prose.
+
+Only an absent or entirely blank trace now yields nothing. Messages are also trimmed — the old `(.*)` capture
+began after the colon, so every message was displayed with a leading space.
+
+*Tests* (in `ecds-api`): `should fall back to any Caused by when no connector-specific one matches`,
+`should fall back to the first line when there is no Caused by at all`,
+`should name the exception type when the cause carries no message`,
+`should keep a message that is not a Java class name intact`,
+`should drop blank traces but keep the others`.
+
+*Still open there:* the structured half of the original suggestion — surfacing the `EVENTHUB_*` token as a field
+on `ConnectorStatusSummary` instead of leaving consumers to parse prose. That changes the shape of a customer-
+facing API response, so it needs the ecds-api owners' agreement rather than a drive-by commit.
+
 ---
 
 ## Breaking change to be aware of
@@ -265,24 +341,6 @@ consumer that parses those fields before deploying.
 ---
 
 ## Still open
-
-### S2 — ecds-api's error extraction is fragile, and it is not in this repository
-
-`_parseException` in `ecds-api/src/client/connect.ts` only recognises
-`Caused by: org.apache.kafka.connect.errors.ConnectException:`. Everything else — a `ConfigException`, a
-`RetriableException`, any subclass, any framework-level failure — is discarded and the customer is shown
-`Error state: Unknown error`.
-
-This connector now bends to fit that pattern, and `CustomerFacingErrorContractTest` keeps it fitting. But the
-regex is the wrong place for the contract:
-
-- it silently drops messages rather than falling back to the top-level exception line;
-- `(.*)` truncates at the first newline;
-- any other connector in the estate has the same trap, and no test.
-
-*Suggested:* in ecds-api, fall back to the first line of the trace when no `Caused by:` matches, and add the
-`EVENTHUB_*`/`errorToken` prefix to the structured status rather than parsing prose. Out of scope here — this
-repository cannot change ecds-api.
 
 ### S3 — Kafka record headers are not propagated
 
@@ -316,17 +374,10 @@ dead letter rate, or Event Hubs throttling frequency — the numbers you actuall
 
 ### S3 — no integration test against a real or emulated Event Hub
 
-All 111 tests are unit tests with mocked producers. The AMQP path, real credentials and real throttling are
+All 117 tests are unit tests with mocked producers. The AMQP path, real credentials and real throttling are
 unexercised. The Azure Event Hubs emulator (in Docker) or a dedicated test namespace would close this.
 
 *Suggested:* a Testcontainers-based suite behind a Maven profile, so the default build stays offline.
-
-### S3 — `Decimal` serializes as base64
-
-`{"amount":"BNI="}` rather than `12.34`. This matches Connect's own `JsonConverter` default, so it is not a
-regression, but it surprises most consumers.
-
-*Suggested:* `json.decimal.format=BASE64|NUMERIC`, defaulting to `BASE64`.
 
 ### S3 — timestamps carry no zone offset
 
@@ -349,12 +400,6 @@ every deployed configuration, so it needs coordinating with ecds-api and EMB.
 
 Retained and validated, but it configures nothing. Either implement a second format (Avro, raw passthrough) or
 deprecate the property.
-
-### S4 — no dependency vulnerability scanning
-
-Nothing fails the build on a known CVE, which is how a decade-old Guava survived in the tree.
-
-*Suggested:* Dependabot, plus `dependency-check-maven` on the Jenkins build.
 
 ### S4 — the GitHub publish workflow duplicates Jenkins
 

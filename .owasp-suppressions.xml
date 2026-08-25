@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Suppressions for the `security-scan` Maven profile (see pom.xml).
+
+  Add an entry only when the finding is genuinely not exploitable here, and say why in a comment. Every
+  suppression should carry an expiry date so it is revisited rather than inherited forever: dependency-check
+  fails the build once an expired suppression is hit.
+
+  Example:
+
+    <suppress until="2026-12-31Z">
+      <notes>CVE-XXXX-YYYY is in the Netty HTTP/2 codec; this connector only speaks AMQP over TLS.</notes>
+      <packageUrl regex="true">^pkg:maven/io\.netty/netty\-codec\-http2@.*$</packageUrl>
+      <cve>CVE-XXXX-YYYY</cve>
+    </suppress>
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>
